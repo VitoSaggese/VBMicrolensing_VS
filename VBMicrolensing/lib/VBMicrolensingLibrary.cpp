@@ -2772,11 +2772,6 @@ double VBMicrolensing::MultiMag(double y1s, double y2s, double RSv, double Tol, 
 		tim0 = Environment::TickCount;
 #endif
 
-		// La chiamata a EXECUTE_METHOD che stava qui e' stata rimossa: il ciclo
-		// do/while soprastante l'ha gia' eseguita sullo stesso stheta ed e'
-		// uscito con Prov allocato. Rifarla lo sovrascriveva senza cancellarlo,
-		// perdendo un _curve e tutti i suoi _point a ogni chiamata di MultiMag.
-
 #ifdef _PRINT_TIMES
 			tim1 = Environment::TickCount;
 		GM += tim1 - tim0;
@@ -2980,8 +2975,6 @@ double VBMicrolensing::MultiMag(double y1s, double y2s, double RSv, double Tol, 
 			astrox2 /= (Mag);
 		}
 		Mag /= (M_PI * RSv * RSv);
-		// L'errore degli intervalli saltati viene riportato, non perso.
-		// Identico a quanto gia' fatto in BinaryMag.
 		therr = (currerr + errbuff) / (M_PI * RSv * RSv);
 
 		delete Thetas;
@@ -3968,7 +3961,6 @@ _curve* VBMicrolensing::NewImagesmultipoly(_theta* theta) {
 	tim0 = Environment::TickCount;
 #endif
 
-	// true finale: parte dalle radici del theta precedente.
 	cmplx_roots_multigen(zr, coefs_mp, n2 + 1, false, true);
 
 	for (int i = n2; i >= 0; i--) {
@@ -4003,13 +3995,6 @@ _curve* VBMicrolensing::NewImagesmultipoly(_theta* theta) {
 		ngood++;
 		if (ngood < n2 + 1)	isgood = good[worst[ngood]];
 	}
-	// Il ciclo si e' esaurito senza chiudere il bilancio delle parita':
-	// l'insieme di immagini non e' coerente e comprende anche valori che non
-	// sono radici. Si dichiara il fallimento restituendo un contorno vuoto,
-	// come fa NewImages per Nopoly: MultiMag riprova a un angolo vicino e, se
-	// non basta, salta l'intervallo contabilizzando l'errore in errbuff.
-	// Con th < 0 siamo nella valutazione centrale a sorgente puntiforme, dove
-	// non esiste nessun intervallo da saltare: li' non si rifiuta.
 	if (theta->th >= 0 && (nminus != nplus + n - 1 || nplus == 0)) {
 		ngood = 0;
 	}
@@ -7707,9 +7692,6 @@ void VBMicrolensing::change_n_mp(int nn) {
 	zr_mp = (complex**)malloc(sizeof(complex*) * n);
 	for (int j = 0; j < n; j++) {
 		zr_mp[j] = (complex*)malloc(sizeof(complex) * nroots);
-		// L'array ha nroots elementi: vanno azzerati tutti. Con l'innesco dal
-		// theta precedente (correzione C) questo e' l'unico azzeramento rimasto,
-		// e gli indici oltre n verrebbero letti non inizializzati.
 		for (int i = 0; i < nroots; i++) {
 			zr_mp[j][i] = 0;
 		}
@@ -8075,8 +8057,6 @@ void VBMicrolensing::cmplx_roots_multigen(complex* roots, complex** poly, int de
 
 		// --- Reset state ---
 		for (l = 0; l < n; l++) nrootsmp_mp[l] = 0;
-		// Con use_roots_as_starting_points le radici del theta precedente restano
-		// come punti di partenza: i theta consecutivi distano anche solo 6e-09.
 		if (!use_roots_as_starting_points) {
 			for (l = 0; l < n; l++) {
 				for (i = 0; i < degree; i++) {
@@ -8129,9 +8109,6 @@ void VBMicrolensing::cmplx_roots_multigen(complex* roots, complex** poly, int de
 								attempts++;
 								nrootsmp_mp[l] = 0;
 								double shift = 1.0e-4;
-								// Riavvio DETERMINISTICO: rand() rendeva il metodo irriproducibile
-								// (stessa configurazione, chi quadro diverso a ogni valutazione).
-								// Successione R2, a bassa discrepanza, funzione del solo contatore.
 								double u1 = attempts * 0.7548776662466927;
 								double u2 = attempts * 0.5698402909980532;
 								double r_real = (u1 - floor(u1) - 0.5) * shift;
@@ -8311,10 +8288,6 @@ void VBMicrolensing::cmplx_roots_multigen(complex* roots, complex** poly, int de
 		ind--;
 	}
 
-	// Rilucidatura MINIMA: solo le radici della catena dell'ultima lente.
-	// E' l'unica che prima di cercare deve importare e deflazionare le radici
-	// delle altre, ed e' l'unica che si degrada (3,1e-08 contro 5,6e-16).
-	// roots[] e' nel riferimento della lente 0: il polinomio e' poly[0].
 	for (i = ind + 1; i <= ind_ultima; i++) {
 		cmplx_newton_spec(poly[0], degree, &roots[i], iter, success);
 	}
@@ -8396,8 +8369,6 @@ void VBMicrolensing::solve_cubic_eq(complex& x0, complex& x1, complex& x2, compl
 
 }
 
-// Valuta |p(z)|^2 con lo schema di Horner. Serve a verificare il passo di
-// rifinitura prima di accettarlo (vedi i punti marcati "passo di rifinitura").
 static double verifica_abs2p(complex* poly, int degree, complex z) {
 	complex pv = poly[degree];
 	for (int k = degree - 1; k >= 0; k--) pv = poly[k] + z * pv;
@@ -8540,11 +8511,6 @@ void VBMicrolensing::cmplx_laguerre(complex* poly, int degree, complex* root, in
 		newroot = *root - dx;
 		if (newroot == *root) return; //nothing changes so return
 		if (good_to_go) {
-			// Passo di rifinitura: il criterio di arresto e' gia' scattato e la
-			// routine esegue un'iterazione in piu' per rilucidare la radice.
-			// Va accettato SOLO se migliora davvero: quando p e p' sono erosi
-			// dalla cancellazione (radici molto ravvicinate) questo passo puo'
-			// essere enorme e distruggere un risultato gia' corretto.
 			if (verifica_abs2p(poly, degree, newroot) < abs2p) *root = newroot;
 			return;
 		}
@@ -8682,11 +8648,6 @@ void VBMicrolensing::cmplx_newton_spec(complex* poly, int degree, complex* root,
 		newroot = *root - dx;
 		if (newroot == *root) return; //nothing changes -> return
 		if (good_to_go) {//this was jump already after stopping criterion was met
-			// Passo di rifinitura: il criterio di arresto e' gia' scattato e la
-			// routine esegue un'iterazione in piu' per rilucidare la radice.
-			// Va accettato SOLO se migliora davvero: quando p e p' sono erosi
-			// dalla cancellazione (radici molto ravvicinate) questo passo puo'
-			// essere enorme e distruggere un risultato gia' corretto.
 			if (verifica_abs2p(poly, degree, newroot) < abs2p) *root = newroot;
 			return;
 		}
@@ -8879,11 +8840,6 @@ void VBMicrolensing::cmplx_laguerre2newton(complex* poly, int degree, complex* r
 				newroot = *root - dx;
 				if (newroot == *root) return; // nothing changes -> return
 				if (good_to_go) {//this was jump already after stopping criterion was met
-					// Passo di rifinitura: il criterio di arresto e' gia' scattato e la
-					// routine esegue un'iterazione in piu' per rilucidare la radice.
-					// Va accettato SOLO se migliora davvero: quando p e p' sono erosi
-					// dalla cancellazione (radici molto ravvicinate) questo passo puo'
-					// essere enorme e distruggere un risultato gia' corretto.
 					if (verifica_abs2p(poly, degree, newroot) < abs2p) *root = newroot;
 					return;
 				}
@@ -8973,12 +8929,7 @@ void VBMicrolensing::cmplx_laguerre2newton(complex* poly, int degree, complex* r
 				newroot = *root - dx;
 				if (newroot == *root) return; //nothing changes -> return
 				if (good_to_go) {
-					// Passo di rifinitura: il criterio di arresto e' gia' scattato e la
-					// routine esegue un'iterazione in piu' per rilucidare la radice.
-					// Va accettato SOLO se migliora davvero: quando p e p' sono erosi
-					// dalla cancellazione (radici molto ravvicinate) questo passo puo'
-					// essere enorme e distruggere un risultato gia' corretto.
-					if (verifica_abs2p(poly, degree, newroot) < abs2p) *root = newroot;
+					if (verifica_abs2p(poly, degree, newroot) < abs2p) *root = newroot; //this was jump already after stopping criterion was met
 					return;
 				}
 				if (mode != 1) {
@@ -9051,11 +9002,6 @@ void VBMicrolensing::cmplx_laguerre2newton(complex* poly, int degree, complex* r
 				newroot = *root - dx;
 				if (newroot == *root) return;
 				if (good_to_go) {
-					// Passo di rifinitura: il criterio di arresto e' gia' scattato e la
-					// routine esegue un'iterazione in piu' per rilucidare la radice.
-					// Va accettato SOLO se migliora davvero: quando p e p' sono erosi
-					// dalla cancellazione (radici molto ravvicinate) questo passo puo'
-					// essere enorme e distruggere un risultato gia' corretto.
 					if (verifica_abs2p(poly, degree, newroot) < abs2p) *root = newroot;
 					return;
 				}
